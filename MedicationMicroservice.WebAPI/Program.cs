@@ -12,6 +12,10 @@ public partial class Program
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
         );
+        
+        builder.Services.AddStackExchangeRedisCache(options =>
+            options.Configuration = builder.Configuration.GetConnectionString("RedisCache"));
+        
         builder.Services.AddApplicationServices(); 
         builder.Services.AddControllers();
         builder.Services.AddRequestValidations();
