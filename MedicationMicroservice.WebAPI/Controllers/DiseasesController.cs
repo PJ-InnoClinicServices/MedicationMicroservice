@@ -1,25 +1,24 @@
 ﻿
+using System.Text.Json;
 using MedicationMicroservice.Application.Models;
 using MedicationMicroservice.BusinessLogic.IServices;
 using MedicationMicroservice.Shared.DTOs.Diseases;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace WebAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class DiseasesController : ControllerBase
+    public class DiseasesController(
+        IDrugsService drugsService,
+        ISubstancesService substancesService,
+        IDiseasesService diseasesService,
+        IDistributedCache cache
+        )
+        : ControllerBase
     {
-        private readonly IDrugsService _drugsService;
-        private readonly ISubstancesService _substancesService;
-        private readonly IDiseasesService _diseasesService;
-
-        public DiseasesController(IDrugsService drugsService, ISubstancesService substancesService, IDiseasesService diseasesService)
-        {
-            _drugsService = drugsService;
-            _substancesService = substancesService;
-            _diseasesService = diseasesService;
-        }
+     
 
         /// <summary>
         /// Gets all diseases.
@@ -30,7 +29,7 @@ namespace WebAPI.Controllers
         [ProducesResponseType(500)] // Internal server error in case of unexpected issues
         public async Task<ActionResult<IEnumerable<Disease>>> GetAllDiseases()
         {
-            var diseases = await _diseasesService.GetAllDiseasesAsync();
+            var diseases = await diseasesService.GetAllDiseasesAsync();
             return Ok(diseases);
         }
 
@@ -43,13 +42,31 @@ namespace WebAPI.Controllers
         [ProducesResponseType(typeof(Disease), 200)]
         [ProducesResponseType(404)] // Disease not found
         [ProducesResponseType(500)] // Internal server error in case of unexpected issues
-        public async Task<ActionResult<Disease>> GetDiseaseById(Guid id)
+        public async Task<IActionResult> GetDiseaseAsync(Guid id, CancellationToken ct)
         {
-            var disease = await _diseasesService.GetDiseaseByIdAsync(id);
+            var cacheKey = $"disease-{id}";
+            
+            var cachedData = await cache.GetStringAsync(cacheKey, ct);
+            if (cachedData != null)
+            {
+                var cachedDisease = JsonSerializer.Deserialize<Disease>(cachedData);
+                return Ok(cachedDisease);
+            }
+            
+            var disease = await diseasesService.GetDiseaseByIdAsync(id);
             if (disease == null)
             {
                 return NotFound();
             }
+            
+            var cacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+            };
+    
+            var serializedData = JsonSerializer.Serialize(disease);
+            await cache.SetStringAsync(cacheKey, serializedData, cacheOptions, ct);
+
             return Ok(disease);
         }
 
@@ -64,7 +81,7 @@ namespace WebAPI.Controllers
         [ProducesResponseType(500)] // Internal server error in case of unexpected issues
         public async Task<ActionResult<Disease>> GetDiseaseByName(string name)
         {
-            var disease = await _diseasesService.GetDiseaseByNameAsync(name);
+            var disease = await diseasesService.GetDiseaseByNameAsync(name);
             if (disease == null)
             {
                 return NotFound();
@@ -94,9 +111,9 @@ namespace WebAPI.Controllers
                 Name = newDiseaseDto.Name,
             };
 
-            var createdDisease = await _diseasesService.AddDiseaseAsync(disease);
+            var createdDisease = await diseasesService.AddDiseaseAsync(disease);
 
-            return CreatedAtAction(nameof(GetDiseaseById), new { id = createdDisease.Id }, createdDisease);
+            return CreatedAtAction(nameof(GetDiseaseByName), new { id = createdDisease.Id }, createdDisease);
         }
 
         /// <summary>
@@ -117,7 +134,7 @@ namespace WebAPI.Controllers
                 return BadRequest("Disease data is null.");
             }
 
-            var updatedDisease = await _diseasesService.UpdateDiseaseAsync(id, new Disease
+            var updatedDisease = await diseasesService.UpdateDiseaseAsync(id, new Disease
             {
                 Name = diseaseUpdateDto.Name,
             });
@@ -141,7 +158,7 @@ namespace WebAPI.Controllers
         [ProducesResponseType(500)] // Internal server error in case of unexpected issues
         public async Task<ActionResult> DeleteDisease(Guid id)
         {
-            var result = await _diseasesService.DeleteDiseaseAsync(id);
+            var result = await diseasesService.DeleteDiseaseAsync(id);
             if (!result)
             {
                 return NotFound();
@@ -159,13 +176,13 @@ namespace WebAPI.Controllers
         [ProducesResponseType(404)]
         public async Task<ActionResult<IEnumerable<Drug>>> FindDrugsForDisease(string diseaseName)
         {
-            var disease = await _diseasesService.GetDiseaseByNameAsync(diseaseName);
+            var disease = await diseasesService.GetDiseaseByNameAsync(diseaseName);
             if (disease == null)
             {
                 return NotFound($"Disease '{diseaseName}' not found.");
             }
 
-            var drugs = await _drugsService.GetDrugsForDiseaseAsync(diseaseName);
+            var drugs = await drugsService.GetDrugsForDiseaseAsync(diseaseName);
             return Ok(drugs);
         }
 
@@ -179,13 +196,13 @@ namespace WebAPI.Controllers
         [ProducesResponseType(404)]
         public async Task<ActionResult<IEnumerable<Substance>>> FindSubstancesForDisease(string diseaseName)
         {
-            var disease = await _diseasesService.GetDiseaseByNameAsync(diseaseName);
+            var disease = await diseasesService.GetDiseaseByNameAsync(diseaseName);
             if (disease == null)
             {
                 return NotFound($"Disease '{diseaseName}' not found.");
             }
 
-            var substances = await _substancesService.GetSubstancesForDiseaseAsync(diseaseName);
+            var substances = await substancesService.GetSubstancesForDiseaseAsync(diseaseName);
             return Ok(substances);
         }
     }
