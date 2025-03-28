@@ -1,6 +1,7 @@
 using MedicationMicroservice.Application;
 using MedicationMicroservice.BusinessLogic.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 using WebAPI.Middlewares;
 
 public partial class Program
@@ -34,6 +35,10 @@ public partial class Program
         
         app.UseHttpsRedirection();
         app.UseRouting();
+        
+        app.UseHttpMetrics();
+        app.MapMetrics();
+        
         app.MapControllers();
         app.Run();
     }

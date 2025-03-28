@@ -1,6 +1,4 @@
-﻿version: '3.8'
-
-services:
+﻿services:
   medicationmicroservice.webapi:
     image: medicationmicroservice.webapi
     build:
@@ -29,7 +27,25 @@ services:
     image: redis:latest
     restart: always
     ports:
-      - '6379:6379'
+      - "6379:6379"
+
+  prometheus:
+    build:
+      context: ./MedicationMicroservice.WebAPI
+      dockerfile: dockerfile-prometheus.yml
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./MedicationMicroservice.WebAPI/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - medicationmicroservice.webapi
+
+  grafana:
+    image: grafana/grafana-enterprise
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
-
